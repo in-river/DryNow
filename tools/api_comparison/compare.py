@@ -351,6 +351,95 @@ def print_availability(con):
             f"({rate(rain_available):.2f}%)"
         )
 
+def calculate_rain_confusion(rows):
+    tp = 0
+    fp = 0
+    fn = 0
+    tn = 0
+
+    for row in rows:
+        api_rain = row["api_rain"]
+        amedas_rain = row["amedas_rain"]
+
+        if api_rain is None or amedas_rain is None:
+            continue
+
+        if api_rain == 1 and amedas_rain == 1:
+            tp += 1
+
+        elif api_rain == 1 and amedas_rain == 0:
+            fp += 1
+
+        elif api_rain == 0 and amedas_rain == 1:
+            fn += 1
+
+        elif api_rain == 0 and amedas_rain == 0:
+            tn += 1
+
+    evaluated = tp + fp + fn + tn
+
+    precision = None
+    if tp + fp > 0:
+        precision = tp / (tp + fp) * 100
+
+    recall = None
+    if tp + fn > 0:
+        recall = tp / (tp + fn) * 100
+
+    miss_rate = None
+    if tp + fn > 0:
+        miss_rate = fn / (tp + fn) * 100
+
+    return {
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "tn": tn,
+        "evaluated": evaluated,
+        "precision": precision,
+        "recall": recall,
+        "miss_rate": miss_rate,
+    }
+
+
+def print_rain_confusion_analysis(rows):
+    print()
+    print("=== RAIN CONFUSION MATRIX ===")
+
+    grouped = defaultdict(list)
+
+    for row in rows:
+        grouped[row["source"]].append(row)
+
+    for source in API_SOURCES:
+        result = calculate_rain_confusion(grouped[source])
+
+        print()
+        print(f"--- {source} ---")
+        print(f"  evaluated rows      : {result['evaluated']}")
+        print(f"  TP rain detected    : {result['tp']}")
+        print(f"  FP false alarm      : {result['fp']}")
+        print(f"  FN rain missed      : {result['fn']}")
+        print(f"  TN dry detected     : {result['tn']}")
+
+        print_metric(
+            "rain precision",
+            result["precision"],
+            unit=" %",
+        )
+
+        print_metric(
+            "rain recall",
+            result["recall"],
+            unit=" %",
+        )
+
+        print_metric(
+            "rain miss rate",
+            result["miss_rate"],
+            unit=" %",
+        )
+
 def main():
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
@@ -446,6 +535,7 @@ def main():
 
     print_city_comparison(rows)
     print_availability(con)
+    print_rain_confusion_analysis(rows)
 
     con.close()
 
