@@ -155,6 +155,90 @@ def print_metric(name, value, count=None, unit=""):
 
     print(f"  {name:<20}: {value:.3f}{unit}{count_text}")
 
+def print_city_comparison(rows):
+    cities = sorted({row["city"] for row in rows})
+
+    print()
+    print("=== CITY COMPARISON ===")
+
+    for city in cities:
+        print()
+        print(f"### {city} ###")
+
+        city_rows = [
+            row for row in rows
+            if row["city"] == city
+        ]
+
+        grouped = defaultdict(list)
+
+        for row in city_rows:
+            grouped[row["source"]].append(row)
+
+        for source in API_SOURCES:
+            source_rows = grouped[source]
+
+            temp_mae, temp_n = calculate_mae(
+                source_rows,
+                "api_temp",
+                "amedas_temp",
+            )
+
+            humidity_mae, humidity_n = calculate_mae(
+                source_rows,
+                "api_humidity",
+                "amedas_humidity",
+            )
+
+            wind_mae, wind_n = calculate_mae(
+                source_rows,
+                "api_wind",
+                "amedas_wind",
+            )
+
+            rain_agreement, rain_n = calculate_rain_agreement(
+                source_rows
+            )
+
+            time_gap = calculate_time_gap(source_rows)
+
+            print()
+            print(f"--- {source} ---")
+            print(f"  paired rows         : {len(source_rows)}")
+
+            print_metric(
+                "temperature MAE",
+                temp_mae,
+                temp_n,
+                " C",
+            )
+
+            print_metric(
+                "humidity MAE",
+                humidity_mae,
+                humidity_n,
+                " %",
+            )
+
+            print_metric(
+                "wind MAE",
+                wind_mae,
+                wind_n,
+                " m/s",
+            )
+
+            print_metric(
+                "rain agreement",
+                rain_agreement,
+                rain_n,
+                " %",
+            )
+
+            print_metric(
+                "source time gap",
+                time_gap,
+                unit=" min",
+            )
 
 def main():
     con = sqlite3.connect(DB_PATH)
@@ -248,6 +332,8 @@ def main():
             time_gap,
             unit=" min",
         )
+
+    print_city_comparison(rows)
 
     con.close()
 
