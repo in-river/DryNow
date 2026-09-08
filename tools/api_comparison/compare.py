@@ -14,6 +14,14 @@ API_SOURCES = (
     "tomorrow_io",
 )
 
+CITY_NAMES = {
+    "kumagaya": "熊谷",
+    "tokyo": "東京",
+    "shizuoka": "静岡",
+    "osaka": "大阪",
+    "matsuyama": "松山",
+}
+
 
 def parse_time(value):
     if value is None:
@@ -159,11 +167,11 @@ def print_city_comparison(rows):
     cities = sorted({row["city"] for row in rows})
 
     print()
-    print("=== CITY COMPARISON ===")
+    print("=== 都市別比較 ===")
 
     for city in cities:
         print()
-        print(f"### {city} ###")
+        print(f"### {CITY_NAMES.get(city, city)} ###")
 
         city_rows = [
             row for row in rows
@@ -204,45 +212,45 @@ def print_city_comparison(rows):
 
             print()
             print(f"--- {source} ---")
-            print(f"  paired rows         : {len(source_rows)}")
+            print(f"  比較件数             : {len(source_rows)}")
 
             print_metric(
-                "temperature MAE",
+                "気温 MAE",
                 temp_mae,
                 temp_n,
                 " C",
             )
 
             print_metric(
-                "humidity MAE",
+                "湿度 MAE",
                 humidity_mae,
                 humidity_n,
                 " %",
             )
 
             print_metric(
-                "wind MAE",
+                "風速 MAE",
                 wind_mae,
                 wind_n,
                 " m/s",
             )
 
             print_metric(
-                "rain agreement",
+                "降水一致率",
                 rain_agreement,
                 rain_n,
                 " %",
             )
 
             print_metric(
-                "source time gap",
+                "観測時刻差",
                 time_gap,
                 unit=" min",
             )
 
 def print_availability(con):
     print()
-    print("=== DATA AVAILABILITY ===")
+    print("=== データ可用性 ===")
 
     for source in API_SOURCES:
         row = con.execute(
@@ -325,29 +333,29 @@ def print_availability(con):
 
         print()
         print(f"--- {source} ---")
-        print(f"  expected rows       : {expected}")
+        print(f"  比較基準件数             : {expected}")
         print(
-            f"  paired              : {paired}/{expected} "
+            f"  比較可能                 : {paired}/{expected} "
             f"({rate(paired):.2f}%)"
         )
         print(
-            f"  successful          : {successful}/{expected} "
+            f"  取得成功                 : {successful}/{expected} "
             f"({rate(successful):.2f}%)"
         )
         print(
-            f"  temperature         : {temperature_available}/{expected} "
+            f"  気温                 : {temperature_available}/{expected} "
             f"({rate(temperature_available):.2f}%)"
         )
         print(
-            f"  humidity            : {humidity_available}/{expected} "
+            f"  湿度                 : {humidity_available}/{expected} "
             f"({rate(humidity_available):.2f}%)"
         )
         print(
-            f"  wind                : {wind_available}/{expected} "
+            f"  風速                 : {wind_available}/{expected} "
             f"({rate(wind_available):.2f}%)"
         )
         print(
-            f"  rain_detected       : {rain_available}/{expected} "
+            f"  雨判定               : {rain_available}/{expected} "
             f"({rate(rain_available):.2f}%)"
         )
 
@@ -404,7 +412,7 @@ def calculate_rain_confusion(rows):
 
 def print_rain_confusion_analysis(rows):
     print()
-    print("=== RAIN CONFUSION MATRIX ===")
+    print("=== 雨判定の当たり方・見逃し分析 ===")
 
     grouped = defaultdict(list)
 
@@ -416,29 +424,164 @@ def print_rain_confusion_analysis(rows):
 
         print()
         print(f"--- {source} ---")
-        print(f"  evaluated rows      : {result['evaluated']}")
-        print(f"  TP rain detected    : {result['tp']}")
-        print(f"  FP false alarm      : {result['fp']}")
-        print(f"  FN rain missed      : {result['fn']}")
-        print(f"  TN dry detected     : {result['tn']}")
+        print(f"  評価件数             : {result['evaluated']}")
+        print(f"  雨を正しく検知       : {result['tp']}")
+        print(f"  雨の空振り           : {result['fp']}")
+        print(f"  雨の見逃し           : {result['fn']}")
+        print(f"  雨なしを正しく判定   : {result['tn']}")
 
         print_metric(
-            "rain precision",
+            "雨判定の正確さ",
             result["precision"],
             unit=" %",
         )
 
         print_metric(
-            "rain recall",
+            "雨の検知率",
             result["recall"],
             unit=" %",
         )
 
         print_metric(
-            "rain miss rate",
+            "雨の見逃し率",
             result["miss_rate"],
             unit=" %",
         )
+
+def print_precipitation_definitions(con):
+    print()
+    print("=== 降水データの比較条件 ===")
+
+    rows = con.execute("""
+        SELECT
+            source,
+            precipitation_unit,
+            precipitation_window_min,
+            COUNT(*) AS count
+        FROM observations
+        WHERE success = 1
+        GROUP BY
+            source,
+            precipitation_unit,
+            precipitation_window_min
+        ORDER BY source
+    """).fetchall()
+
+    for source, unit, window, count in rows:
+        window_text = (
+            f"{window} 分"
+            if window is not None
+            else "未定義"
+        )
+
+        print(
+            f"  {source:<16} "
+            f"単位={unit:<6} "
+            f"観測時間幅={window_text:<12} "
+            f"件数={count}"
+        )
+
+    print()
+    print(
+        "注意: 雨判定の評価値は参考値です。"
+    )
+    print(
+        "ソースごとに降水の観測時間幅が異なるため、降水ランキングは表示しません。"
+    )
+
+def print_overall_summary(rows):
+    print()
+    print("=== 総合サマリー ===")
+
+    grouped = defaultdict(list)
+
+    for row in rows:
+        grouped[row["source"]].append(row)
+
+    metrics = {
+        "気温 MAE": (
+            "api_temp",
+            "amedas_temp",
+            " C",
+        ),
+        "湿度 MAE": (
+            "api_humidity",
+            "amedas_humidity",
+            " %",
+        ),
+        "風速 MAE": (
+            "api_wind",
+            "amedas_wind",
+            " m/s",
+        ),
+    }
+
+    for title, (api_key, amedas_key, unit) in metrics.items():
+        ranking = []
+
+        for source in API_SOURCES:
+            value, count = calculate_mae(
+                grouped[source],
+                api_key,
+                amedas_key,
+            )
+
+            if value is not None:
+                ranking.append(
+                    (value, source, count)
+                )
+
+        ranking.sort()
+
+        print()
+        print(f"--- {title} ---")
+
+        for rank, (value, source, count) in enumerate(
+            ranking,
+            start=1,
+        ):
+            print(
+                f"  {rank}. {source:<16} "
+                f"{value:.3f}{unit} (n={count})"
+            )
+
+    freshness_ranking = []
+
+    for source in API_SOURCES:
+        value = calculate_time_gap(
+            grouped[source]
+        )
+
+        if value is not None:
+            freshness_ranking.append(
+                (value, source)
+            )
+
+    freshness_ranking.sort()
+
+    print()
+    print("--- 観測時刻差 ---")
+
+    for rank, (value, source) in enumerate(
+        freshness_ranking,
+        start=1,
+    ):
+        print(
+            f"  {rank}. {source:<16} "
+            f"{value:.3f} min"
+        )
+
+    print()
+    print("--- 降水 ---")
+    print(
+        "  ソースごとに降水の観測時間幅が異なるため、"
+        "ランキングは表示しません。"
+    )
+    print(
+        "  降水一致率と雨の当たり方・見逃し分析は"
+        "参考値として扱います。"
+
+    )
 
 def main():
     con = sqlite3.connect(DB_PATH)
@@ -451,16 +594,16 @@ def main():
     for row in rows:
         grouped[row["source"]].append(row)
 
-    print("=== API vs AMeDAS Comparison ===")
-    print(f"Database: {DB_PATH}")
-    print(f"Comparison rows: {len(rows)}")
+    print("=== API と AMeDAS の全体比較 ===")
+    print(f"データベース: {DB_PATH}")
+    print(f"比較対象行数: {len(rows)}")
 
     for source in API_SOURCES:
         source_rows = grouped[source]
 
         print()
         print(f"--- {source} ---")
-        print(f"  paired rows         : {len(source_rows)}")
+        print(f"  比較件数             : {len(source_rows)}")
 
         temp_mae, temp_n = calculate_mae(
             source_rows,
@@ -502,40 +645,42 @@ def main():
 
         time_gap = calculate_time_gap(source_rows)
 
-        print_metric("temperature MAE", temp_mae, temp_n, " C")
-        print_metric("temperature bias", temp_bias, unit=" C")
+        print_metric("気温 MAE", temp_mae, temp_n, " C")
+        print_metric("気温 bias", temp_bias, unit=" C")
 
         print_metric(
-            "humidity MAE",
+            "湿度 MAE",
             humidity_mae,
             humidity_n,
             " %",
         )
         print_metric(
-            "humidity bias",
+            "湿度 bias",
             humidity_bias,
             unit=" %",
         )
 
-        print_metric("wind MAE", wind_mae, wind_n, " m/s")
-        print_metric("wind bias", wind_bias, unit=" m/s")
+        print_metric("風速 MAE", wind_mae, wind_n, " m/s")
+        print_metric("風速 bias", wind_bias, unit=" m/s")
 
         print_metric(
-            "rain agreement",
+            "降水一致率",
             rain_agreement,
             rain_n,
             " %",
         )
 
         print_metric(
-            "source time gap",
+            "観測時刻差",
             time_gap,
             unit=" min",
         )
 
     print_city_comparison(rows)
     print_availability(con)
+    print_precipitation_definitions(con)
     print_rain_confusion_analysis(rows)
+    print_overall_summary(rows)
 
     con.close()
 
