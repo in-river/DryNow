@@ -240,6 +240,117 @@ def print_city_comparison(rows):
                 unit=" min",
             )
 
+def print_availability(con):
+    print()
+    print("=== DATA AVAILABILITY ===")
+
+    for source in API_SOURCES:
+        row = con.execute(
+            """
+            SELECT
+                COUNT(*) AS expected,
+
+                SUM(
+                    CASE
+                        WHEN api.id IS NOT NULL THEN 1
+                        ELSE 0
+                    END
+                ) AS paired,
+
+                SUM(
+                    CASE
+                        WHEN api.success = 1 THEN 1
+                        ELSE 0
+                    END
+                ) AS successful,
+
+                SUM(
+                    CASE
+                        WHEN api.temperature_c IS NOT NULL THEN 1
+                        ELSE 0
+                    END
+                ) AS temperature_available,
+
+                SUM(
+                    CASE
+                        WHEN api.humidity_pct IS NOT NULL THEN 1
+                        ELSE 0
+                    END
+                ) AS humidity_available,
+
+                SUM(
+                    CASE
+                        WHEN api.wind_speed_ms IS NOT NULL THEN 1
+                        ELSE 0
+                    END
+                ) AS wind_available,
+
+                SUM(
+                    CASE
+                        WHEN api.rain_detected IS NOT NULL THEN 1
+                        ELSE 0
+                    END
+                ) AS rain_available
+
+            FROM observations AS amedas
+
+            LEFT JOIN observations AS api
+                ON api.target_time = amedas.target_time
+                AND api.city = amedas.city
+                AND api.point_role = amedas.point_role
+                AND api.source = ?
+
+            WHERE
+                amedas.source = 'amedas'
+                AND amedas.success = 1
+            """,
+            (source,),
+        ).fetchone()
+
+        (
+            expected,
+            paired,
+            successful,
+            temperature_available,
+            humidity_available,
+            wind_available,
+            rain_available,
+        ) = row
+
+        def rate(value):
+            if expected == 0:
+                return 0.0
+
+            return value / expected * 100
+
+        print()
+        print(f"--- {source} ---")
+        print(f"  expected rows       : {expected}")
+        print(
+            f"  paired              : {paired}/{expected} "
+            f"({rate(paired):.2f}%)"
+        )
+        print(
+            f"  successful          : {successful}/{expected} "
+            f"({rate(successful):.2f}%)"
+        )
+        print(
+            f"  temperature         : {temperature_available}/{expected} "
+            f"({rate(temperature_available):.2f}%)"
+        )
+        print(
+            f"  humidity            : {humidity_available}/{expected} "
+            f"({rate(humidity_available):.2f}%)"
+        )
+        print(
+            f"  wind                : {wind_available}/{expected} "
+            f"({rate(wind_available):.2f}%)"
+        )
+        print(
+            f"  rain_detected       : {rain_available}/{expected} "
+            f"({rate(rain_available):.2f}%)"
+        )
+
 def main():
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
@@ -334,6 +445,7 @@ def main():
         )
 
     print_city_comparison(rows)
+    print_availability(con)
 
     con.close()
 
