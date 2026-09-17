@@ -1,90 +1,315 @@
+import '../drying_assessment.dart';
+
+const _wetWeatherCodes = {
+  51,
+  53,
+  55,
+  56,
+  57,
+  61,
+  63,
+  65,
+  66,
+  67,
+  71,
+  73,
+  75,
+  77,
+  80,
+  81,
+  82,
+  85,
+  86,
+  95,
+  96,
+  99,
+};
+
+double? _number(dynamic value) =>
+    value is num && value.isFinite ? value.toDouble() : null;
+
+int? _integer(dynamic value) {
+  final number = _number(value);
+  return number != null && number == number.truncateToDouble()
+      ? number.toInt()
+      : null;
+}
+
+String _weatherDescription(int? code) => switch (code) {
+  0 || 1 => '晴れ',
+  2 || 3 => '曇り',
+  45 || 48 => '霧',
+  51 || 53 || 55 || 56 || 57 => '霧雨',
+  61 || 63 || 65 || 66 || 67 || 80 || 81 || 82 => '雨',
+  71 || 73 || 75 || 77 || 85 || 86 => '雪',
+  95 || 96 || 99 => '雷雨',
+  _ => '天気状態は不明',
+};
+
+String _formatValue(double? value, String unit) =>
+    value == null ? '不明' : '${value.toStringAsFixed(1)}$unit';
+
+bool? _precipitationDetected(double? amount, int? weatherCode) {
+  if (_wetWeatherCodes.contains(weatherCode)) return true;
+  if (amount != null && amount.isFinite && amount >= 0) return amount > 0;
+  return null;
+}
+
 class Weather {
   final String cityName;
-  final double latitude;
-  final double longitude;
-  final DateTime updatedAtUtc;
-  final int timezoneOffsetSeconds;
-  final double temperature;
-  final double feelsLike;
-  final String description;
-  final String weatherMain;
-  final String iconCode;
-  final double rainVolume;
-  final int humidity;
-  final double windSpeed;
+  final double? latitude;
+  final double? longitude;
+  final DateTime? updatedAtUtc;
+  final double? temperature;
+  final double? feelsLike;
+  final double? humidity;
+  final double? windSpeed;
+  final double? precipitationMm;
+  final int? precipitationIntervalSeconds;
+  final int? weatherCode;
 
-  Weather({
+  const Weather({
     required this.cityName,
-    required this.latitude,
-    required this.longitude,
-    required this.updatedAtUtc,
-    required this.timezoneOffsetSeconds,
-    required this.temperature,
-    required this.feelsLike,
-    required this.description,
-    required this.weatherMain,
-    required this.iconCode,
-    required this.rainVolume,
-    required this.humidity,
-    required this.windSpeed,
+    this.latitude,
+    this.longitude,
+    this.updatedAtUtc,
+    this.temperature,
+    this.feelsLike,
+    this.humidity,
+    this.windSpeed,
+    this.precipitationMm,
+    this.precipitationIntervalSeconds,
+    this.weatherCode,
   });
 
-  factory Weather.fromJson(Map<String, dynamic> json) {
-    final cityName = json['name'] as String? ?? '';
-    final coordinates = json['coord'] as Map<String, dynamic>? ?? {};
-    final main = json['main'] as Map<String, dynamic>? ?? {};
-    final weatherList = json['weather'] as List<dynamic>? ?? <dynamic>[];
-    final weather = weatherList.isNotEmpty
-        ? weatherList.first as Map<String, dynamic>
-        : <String, dynamic>{};
-    final rain = json['rain'] as Map<String, dynamic>?;
-    final wind = json['wind'] as Map<String, dynamic>? ?? {};
-    final timestamp = (json['dt'] as num?)?.toInt() ?? 0;
-
+  factory Weather.fromOpenMeteoJson(
+    Map<String, dynamic> json, {
+    required String cityName,
+  }) {
+    final current = json['current'];
+    final units = json['current_units'];
+    if (current is! Map<String, dynamic> || units is! Map<String, dynamic>) {
+      throw const FormatException('現在の気象データがありません。');
+    }
+    // 単位が違う値を同じ閾値へ渡さず、欠損として判定側に伝える。
+    double? value(String key, String unit) =>
+        units[key] == unit ? _number(current[key]) : null;
+    final epoch = units['time'] == 'unixtime'
+        ? _integer(current['time'])
+        : null;
+    final interval = units['interval'] == 'seconds'
+        ? _integer(current['interval'])
+        : null;
     return Weather(
       cityName: cityName,
-      latitude: (coordinates['lat'] as num?)?.toDouble() ?? 0.0,
-      longitude: (coordinates['lon'] as num?)?.toDouble() ?? 0.0,
-      updatedAtUtc: DateTime.fromMillisecondsSinceEpoch(
-        timestamp * 1000,
-        isUtc: true,
-      ),
-      timezoneOffsetSeconds: (json['timezone'] as num?)?.toInt() ?? 0,
-      temperature: (main['temp'] as num?)?.toDouble() ?? 0.0,
-      feelsLike: (main['feels_like'] as num?)?.toDouble() ?? 0.0,
-      description: weather['description'] as String? ?? '',
-      weatherMain: weather['main'] as String? ?? '',
-      iconCode: weather['icon'] as String? ?? '01d',
-      rainVolume: (rain?['1h'] as num?)?.toDouble() ?? 0.0,
-      humidity: (main['humidity'] as num?)?.toInt() ?? 0,
-      windSpeed: (wind['speed'] as num?)?.toDouble() ?? 0.0,
+      latitude: _number(json['latitude']),
+      longitude: _number(json['longitude']),
+      updatedAtUtc: epoch != null && epoch.abs() <= 8640000000000
+          ? DateTime.fromMillisecondsSinceEpoch(epoch * 1000, isUtc: true)
+          : null,
+      temperature: value('temperature_2m', '°C'),
+      feelsLike: value('apparent_temperature', '°C'),
+      humidity: value('relative_humidity_2m', '%'),
+      windSpeed: value('wind_speed_10m', 'm/s'),
+      precipitationMm: value('precipitation', 'mm'),
+      precipitationIntervalSeconds: interval != null && interval > 0
+          ? interval
+          : null,
+      weatherCode: units['weather_code'] == 'wmo code'
+          ? _integer(current['weather_code'])
+          : null,
     );
   }
 
-  String get temperatureText => '${temperature.round()}℃';
+  // 降水量が欠けても、雨・雪・雷雨のコードがあれば危険側へ判定する。
+  bool? get precipitationDetected =>
+      _precipitationDetected(precipitationMm, weatherCode);
 
-  String get feelsLikeText => '${feelsLike.round()}℃';
+  DryingConditions get dryingConditions => DryingConditions(
+    temperatureC: temperature,
+    humidityPct: humidity,
+    windSpeedMs: windSpeed,
+    precipitationMm: precipitationMm,
+    precipitationDetected: precipitationDetected,
+    sourceTime: updatedAtUtc,
+  );
 
-  String get coordinatesText =>
-      '${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}';
+  String get description => _weatherDescription(weatherCode);
 
-  String get updatedAtText {
-    final localTime = updatedAtUtc.add(
-      Duration(seconds: timezoneOffsetSeconds),
+  String get temperatureText => _formatValue(temperature, '℃');
+  String get feelsLikeText => _formatValue(feelsLike, '℃');
+  String get humidityText => _formatValue(humidity, '%');
+  String get windSpeedText => _formatValue(windSpeed, ' m/s');
+  String get rainText {
+    final interval = precipitationIntervalSeconds;
+    final window = interval == null ? '集計時間不明' : '直前${interval / 60}分';
+    return '${_formatValue(precipitationMm, ' mm')}（$window、雨・雪を含む）';
+  }
+
+  String get coordinatesText => latitude == null || longitude == null
+      ? '不明'
+      : '${latitude!.toStringAsFixed(4)}, ${longitude!.toStringAsFixed(4)}';
+
+  String get updatedAtText =>
+      updatedAtUtc == null ? '不明' : '${updatedAtUtc!.toLocal()}（端末時刻）';
+}
+
+class HourlyForecast {
+  final DateTime forecastTimeUtc;
+  final double? temperature;
+  final double? humidity;
+  final double? windSpeed;
+  final double? precipitationMm;
+  final double? precipitationProbability;
+  final int? weatherCode;
+
+  const HourlyForecast({
+    required this.forecastTimeUtc,
+    this.temperature,
+    this.humidity,
+    this.windSpeed,
+    this.precipitationMm,
+    this.precipitationProbability,
+    this.weatherCode,
+  });
+
+  bool? get precipitationDetected =>
+      _precipitationDetected(precipitationMm, weatherCode);
+
+  DryingConditions get dryingConditions => DryingConditions(
+    temperatureC: temperature,
+    humidityPct: humidity,
+    windSpeedMs: windSpeed,
+    precipitationMm: precipitationMm,
+    precipitationProbabilityPct: precipitationProbability,
+    precipitationDetected: precipitationDetected,
+    sourceTime: forecastTimeUtc,
+  );
+
+  String get description => _weatherDescription(weatherCode);
+  String get temperatureText => _formatValue(temperature, '℃');
+  String get humidityText => _formatValue(humidity, '%');
+  String get windSpeedText => _formatValue(windSpeed, ' m/s');
+  String get precipitationText => _formatValue(precipitationMm, ' mm');
+  String get precipitationProbabilityText =>
+      _formatValue(precipitationProbability, '%');
+  String get forecastTimeText => _formatDateTime(forecastTimeUtc.toLocal());
+}
+
+class ForecastSeries {
+  final String cityName;
+  final double? latitude;
+  final double? longitude;
+  final List<HourlyForecast> forecasts;
+
+  ForecastSeries({
+    required this.cityName,
+    this.latitude,
+    this.longitude,
+    required List<HourlyForecast> forecasts,
+  }) : forecasts = List.unmodifiable(forecasts);
+
+  factory ForecastSeries.fromOpenMeteoJson(
+    Map<String, dynamic> json, {
+    required String cityName,
+  }) {
+    final hourly = json['hourly'];
+    final units = json['hourly_units'];
+    if (hourly is! Map<String, dynamic> || units is! Map<String, dynamic>) {
+      throw const FormatException('時間別予報データがありません。');
+    }
+
+    final times = hourly['time'];
+    if (times is! List) {
+      return ForecastSeries(
+        cityName: cityName,
+        latitude: _number(json['latitude']),
+        longitude: _number(json['longitude']),
+        forecasts: const [],
+      );
+    }
+
+    double? value(String key, int index, String unit) {
+      if (units[key] != unit) return null;
+      final values = hourly[key];
+      return values is List && index < values.length
+          ? _number(values[index])
+          : null;
+    }
+
+    int? integerValue(String key, int index, String unit) {
+      if (units[key] != unit) return null;
+      final values = hourly[key];
+      return values is List && index < values.length
+          ? _integer(values[index])
+          : null;
+    }
+
+    final forecasts = <HourlyForecast>[];
+    for (var index = 0; index < times.length; index++) {
+      final epoch = units['time'] == 'unixtime' ? _integer(times[index]) : null;
+      if (epoch == null || epoch.abs() > 8640000000000) continue;
+      forecasts.add(
+        HourlyForecast(
+          forecastTimeUtc: DateTime.fromMillisecondsSinceEpoch(
+            epoch * 1000,
+            isUtc: true,
+          ),
+          temperature: value('temperature_2m', index, '°C'),
+          humidity: value('relative_humidity_2m', index, '%'),
+          windSpeed: value('wind_speed_10m', index, 'm/s'),
+          precipitationMm: value('precipitation', index, 'mm'),
+          precipitationProbability: value(
+            'precipitation_probability',
+            index,
+            '%',
+          ),
+          weatherCode: integerValue('weather_code', index, 'wmo code'),
+        ),
+      );
+    }
+    forecasts.sort((a, b) => a.forecastTimeUtc.compareTo(b.forecastTimeUtc));
+    return ForecastSeries(
+      cityName: cityName,
+      latitude: _number(json['latitude']),
+      longitude: _number(json['longitude']),
+      forecasts: forecasts,
     );
-    return '${localTime.year}/${localTime.month.toString().padLeft(2, '0')}/${localTime.day.toString().padLeft(2, '0')} ${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}:${localTime.second.toString().padLeft(2, '0')} (API地点の現地時刻)';
   }
 
-  String get timezoneText {
-    final sign = timezoneOffsetSeconds >= 0 ? '+' : '-';
-    final absoluteOffset = timezoneOffsetSeconds.abs();
-    final hours = (absoluteOffset ~/ 3600).toString().padLeft(2, '0');
-    final minutes = ((absoluteOffset % 3600) ~/ 60).toString().padLeft(2, '0');
-    return 'UTC$sign$hours:$minutes';
+  HourlyForecast? forecastNearestTo(
+    DateTime plannedTime, {
+    Duration maximumDifference = const Duration(minutes: 30),
+  }) {
+    HourlyForecast? nearest;
+    Duration? nearestDifference;
+    final plannedUtc = plannedTime.toUtc();
+    for (final forecast in forecasts) {
+      final difference = forecast.forecastTimeUtc.difference(plannedUtc).abs();
+      final isCloser =
+          nearestDifference == null || difference < nearestDifference;
+      final isSameDistanceButLater =
+          nearestDifference != null &&
+          difference == nearestDifference &&
+          forecast.forecastTimeUtc.isAfter(nearest!.forecastTimeUtc);
+      if (isCloser || isSameDistanceButLater) {
+        nearest = forecast;
+        nearestDifference = difference;
+      }
+    }
+    if (nearestDifference == null || nearestDifference > maximumDifference) {
+      return null;
+    }
+    return nearest;
   }
 
-  String get rainText =>
-      rainVolume > 0 ? '${rainVolume.toStringAsFixed(1)} mm' : '0 mm';
+  String get coordinatesText => latitude == null || longitude == null
+      ? '不明'
+      : '${latitude!.toStringAsFixed(4)}, ${longitude!.toStringAsFixed(4)}';
+}
 
-  String get windSpeedText => '${windSpeed.toStringAsFixed(1)} m/s';
+String _formatDateTime(DateTime value) {
+  String twoDigits(int number) => number.toString().padLeft(2, '0');
+  return '${value.year}/${twoDigits(value.month)}/${twoDigits(value.day)} '
+      '${twoDigits(value.hour)}:${twoDigits(value.minute)}';
 }

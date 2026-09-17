@@ -5,7 +5,7 @@
 Flutterと外部APIの学習を目的として開発したWeather Appを基礎に、
 気象情報を表示するだけでなく、**ユーザーの具体的な行動判断につなげるアプリ**を目指してDryNowとして開発を進めている。
 
-> 現在開発中
+> 現在開発中（2026-09-17更新）：予報判定v8を維持し、レスポンシブUIと地名検索による地点変更をv8.1で実装。
 
 ---
 
@@ -58,7 +58,7 @@ Weather Appとしての完成時点は、Gitタグ **`weather-app-v1`** とし�
 
 ## 🚧 現在の開発フェーズ
 
-### Phase 1：気象データの信頼性検証
+### Phase 1：気象データの信頼性検証とAPI選定
 
 DryNowでは、取得した気象データをもとに外干し判定や乾燥時間予測を行う。
 
@@ -76,36 +76,47 @@ DryNowでは、取得した気象データをもとに外干し判定や乾燥�
 
 必要に応じて取得方法やデータソースの変更も検討する。
 
-### Phase 1-Bの現在地
+### API選定とPhase 2の現在地（2026-09-17）
 
 現在は、各APIがリアルタイムに返した値を自前で蓄積する比較基盤を運用している。
 
 実装・確認済み：
 
-* OpenWeatherとOpen-MeteoのCurrent値取得
+* OpenWeather、Open-Meteo、Visual Crossing、Tomorrow.ioのCurrent値とAMeDASの取得
 * 熊谷・東京・静岡・大阪・松山の5都市のprimary地点
-* 5都市×2API、1回10レコードのSQLite保存
+* 5都市×5ソース、通常1回25レコードのSQLite保存
 * raw JSONと正規化値の保持
 * Windows Task Schedulerによる毎時05分・35分の30分自動収集
 * 全都市・全APIで共通の`target_time`を使用
-* OpenWeather、Open-Meteo、時刻丸めの単体テスト
+* `compare.py`による気温・湿度・風速・鮮度・可用性・欠損率の比較と雨判定の参考評価
+* API collector、時刻丸め、比較処理の単体テスト（Python 57件成功）
+* Flutterの現在値取得をOpen-Meteoへ切り替え
+* API通信から独立した純粋Dartの外干し判定v1と、判定理由を表示するUI
+* 1～24時間後の干し始め時刻に対応するOpen-Meteo時間別予報と降水確率の判定接続
+* 最大幅800pxのレスポンシブUI、ChoiceChipによる時刻選択、2×2の主要気象カード
+* Open-Meteo Geocoding APIによる地点検索と、選択地点の予報・判定の自動更新
 
-Visual Crossing、Tomorrow.io、AMeDAS収集と比較分析は未実装である。また、外干し判定と乾燥時間推定もまだ実装していない。
+採用APIは**Open-Meteo**。比較数値と料金・利用条件を含む選定理由は
+[API比較結果](docs/API_COMPARISON_RESULT.md)、判定の閾値と制約は
+[外干し判定v1](docs/DRYING_RULES_V1.md)を参照する。
+予報接続v8の仕様は[予報ベースの実用化](docs/FORECAST_IMPLEMENTATION_V8.md)を参照する。
+[UI改善・地点変更v8.1](docs/UI_LOCATION_V8_1.md)に現行画面と地点検索の仕様を記録している。
+乾燥時間推定と干している期間全体の評価は未実装。
 
 ---
 
 ## 🗺 Development Roadmap
 
-### Phase 1：気象データの信頼性検証 ← 現在
+### Phase 1：気象データの信頼性検証（API選定済み）
 
 * APIレスポンスの確認
 * 取得地点・更新時刻の確認
 * 他の気象情報との比較
 * 緯度・経度を利用した取得方法の検討
 
-### Phase 2：外干し判定
+### Phase 2：外干し判定 ← 現在
 
-気温・湿度・風速・降水量などを利用し、外干しに適しているかを判定するロジックを実装する。
+気温・湿度・風速・降水・降水確率を使うルールベースのv1、時間別予報によるv8、地点検索とUI改善のv8.1を実装済み。今後は干している期間全体の評価と閾値検証を進める。
 
 ### Phase 3：乾燥時間予測
 
@@ -114,7 +125,7 @@ Visual Crossing、Tomorrow.io、AMeDAS収集と比較分析は未実装である
 ### Phase 4：UI / UX改善
 
 * 判定結果の分かりやすい表示
-* 現在地への対応
+* 現在地への対応（地名検索はv8.1で実装済み）
 * 時間帯ごとの予測
 * 外干しに適した時間帯の表示
 
@@ -138,6 +149,7 @@ Visual Crossing、Tomorrow.io、AMeDAS収集と比較分析は未実装である
 
 ## 📍現在のステータス
 
-**Weather App v1 完了 → DryNow Phase 1-Bのデータ収集基盤を運用中**
+**API選定完了 → DryNow Phase 2のUI・地点変更対応v8.1を実装**
 
-現在はPhase 1「気象データの信頼性検証」として、5都市のCurrent API値を30分ごとに蓄積している。
+Flutterは地名検索で地点を選び、干し始めるまでの時間に対応するOpen-Meteo時間別予報から外干し適性と理由を表示する。
+比較・収集用Pythonツールは`tools/api_comparison/`に分離している。

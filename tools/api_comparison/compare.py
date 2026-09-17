@@ -24,10 +24,21 @@ CITY_NAMES = {
 
 
 def parse_time(value):
-    if value is None:
+    if not isinstance(value, str):
         return None
 
-    return datetime.fromisoformat(value)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    # タイムゾーン不明の時刻をローカル時刻と推測しない。
+    return parsed if parsed.tzinfo is not None else None
+
+
+def open_database(db_path=DB_PATH):
+    con = sqlite3.connect(Path(db_path).resolve().as_uri() + "?mode=ro", uri=True)
+    con.row_factory = sqlite3.Row
+    return con
 
 
 def calculate_mae(rows, api_key, ref_key):
@@ -112,6 +123,7 @@ def load_comparisons(con):
         SELECT
             api.source,
             api.city,
+            api.point_role,
             api.target_time,
 
             api.source_time AS api_source_time,
@@ -149,6 +161,78 @@ def load_comparisons(con):
     """
 
     return con.execute(sql, API_SOURCES).fetchall()
+
+
+def common_comparisons(rows, required_fields=()):
+    grouped = defaultdict(list)
+    for row in rows:
+        key = (row["target_time"], row["city"], row["point_role"])
+        grouped[key].append(row)
+
+    common = []
+    for group in grouped.values():
+        if {row["source"] for row in group} != set(API_SOURCES):
+            continue
+        if any(row[field] is None for row in group for field in required_fields):
+            continue
+        common.extend(group)
+    return common
+
+
+def calculate_freshness(rows):
+    ages = []
+    for row in rows:
+        fetched_at = parse_time(row["fetched_at"])
+        source_time = parse_time(row["source_time"])
+        if fetched_at is not None and source_time is not None:
+            # 負値も保持し、APIの未来時刻や時計ずれを隠さない。
+            ages.append((fetched_at - source_time).total_seconds() / 60)
+    return {
+        "count": len(ages),
+        "missing": len(rows) - len(ages),
+        "mean": mean(ages) if ages else None,
+        "max": max(ages) if ages else None,
+        "negative": sum(age < 0 for age in ages),
+    }
+
+
+def print_freshness(con):
+    print()
+    print("=== データ鮮度 (取得成功行の fetched_at - source_time) ===")
+    print("API申告時刻から取得までの経過時間。モデル更新頻度や予報精度とは異なります。")
+    for source in API_SOURCES:
+        rows = con.execute(
+            "SELECT fetched_at, source_time FROM observations "
+            "WHERE source = ? AND success = 1", (source,),
+        ).fetchall()
+        result = calculate_freshness(rows)
+        print(f"\n--- {source} ---")
+        print_metric("平均経過時間", result["mean"], result["count"], " min")
+        print_metric("最大経過時間", result["max"], unit=" min")
+        print(f"  時刻欠損・不正: {result['missing']} / 負の経過時間: {result['negative']}")
+
+
+def load_availability(con, source):
+    expected = con.execute(
+        "SELECT COUNT(*) FROM (SELECT DISTINCT target_time, city, point_role "
+        "FROM observations)"
+    ).fetchone()[0]
+    rows = con.execute(
+        "SELECT success, temperature_c, humidity_pct, wind_speed_ms, rain_detected "
+        "FROM observations WHERE source = ?", (source,),
+    ).fetchall()
+    successful = [row for row in rows if row["success"] == 1]
+    return {
+        "expected": expected,
+        "recorded": len(rows),
+        "successful": len(successful),
+        "failed": sum(row["success"] == 0 for row in rows),
+        "unrecorded": expected - len(rows),
+        "missing": {
+            field: sum(row[field] is None for row in successful)
+            for field in ("temperature_c", "humidity_pct", "wind_speed_ms", "rain_detected")
+        },
+    }
 
 
 def print_metric(name, value, count=None, unit=""):
@@ -251,113 +335,22 @@ def print_city_comparison(rows):
 def print_availability(con):
     print()
     print("=== データ可用性 ===")
+    print("取得成功率の分母は各APIの記録行。AMeDAS失敗時も含みます。")
+    print("未記録の分母はDB内の全地点・時刻枠。導入前も含み、API失敗とは区別します。")
+    print("全ソース未記録の時間枠はDBだけでは把握できず、稼働率/SLAは評価できません。")
+
+    def fraction(value, total):
+        rate = f"{value / total * 100:.2f}%" if total else "N/A"
+        return f"{value}/{total} ({rate})"
 
     for source in API_SOURCES:
-        row = con.execute(
-            """
-            SELECT
-                COUNT(*) AS expected,
-
-                SUM(
-                    CASE
-                        WHEN api.id IS NOT NULL THEN 1
-                        ELSE 0
-                    END
-                ) AS paired,
-
-                SUM(
-                    CASE
-                        WHEN api.success = 1 THEN 1
-                        ELSE 0
-                    END
-                ) AS successful,
-
-                SUM(
-                    CASE
-                        WHEN api.temperature_c IS NOT NULL THEN 1
-                        ELSE 0
-                    END
-                ) AS temperature_available,
-
-                SUM(
-                    CASE
-                        WHEN api.humidity_pct IS NOT NULL THEN 1
-                        ELSE 0
-                    END
-                ) AS humidity_available,
-
-                SUM(
-                    CASE
-                        WHEN api.wind_speed_ms IS NOT NULL THEN 1
-                        ELSE 0
-                    END
-                ) AS wind_available,
-
-                SUM(
-                    CASE
-                        WHEN api.rain_detected IS NOT NULL THEN 1
-                        ELSE 0
-                    END
-                ) AS rain_available
-
-            FROM observations AS amedas
-
-            LEFT JOIN observations AS api
-                ON api.target_time = amedas.target_time
-                AND api.city = amedas.city
-                AND api.point_role = amedas.point_role
-                AND api.source = ?
-
-            WHERE
-                amedas.source = 'amedas'
-                AND amedas.success = 1
-            """,
-            (source,),
-        ).fetchone()
-
-        (
-            expected,
-            paired,
-            successful,
-            temperature_available,
-            humidity_available,
-            wind_available,
-            rain_available,
-        ) = row
-
-        def rate(value):
-            if expected == 0:
-                return 0.0
-
-            return value / expected * 100
-
-        print()
-        print(f"--- {source} ---")
-        print(f"  比較基準件数             : {expected}")
-        print(
-            f"  比較可能                 : {paired}/{expected} "
-            f"({rate(paired):.2f}%)"
-        )
-        print(
-            f"  取得成功                 : {successful}/{expected} "
-            f"({rate(successful):.2f}%)"
-        )
-        print(
-            f"  気温                 : {temperature_available}/{expected} "
-            f"({rate(temperature_available):.2f}%)"
-        )
-        print(
-            f"  湿度                 : {humidity_available}/{expected} "
-            f"({rate(humidity_available):.2f}%)"
-        )
-        print(
-            f"  風速                 : {wind_available}/{expected} "
-            f"({rate(wind_available):.2f}%)"
-        )
-        print(
-            f"  雨判定               : {rain_available}/{expected} "
-            f"({rate(rain_available):.2f}%)"
-        )
+        result = load_availability(con, source)
+        print(f"\n--- {source} ---")
+        print(f"  取得成功: {fraction(result['successful'], result['recorded'])}")
+        print(f"  記録済み失敗: {fraction(result['failed'], result['recorded'])}")
+        print(f"  未記録: {fraction(result['unrecorded'], result['expected'])}")
+        for field, missing in result["missing"].items():
+            print(f"  {field} 成功行内欠損: {fraction(missing, result['successful'])}")
 
 def calculate_rain_confusion(rows):
     tp = 0
@@ -476,7 +469,7 @@ def print_precipitation_definitions(con):
 
         print(
             f"  {source:<16} "
-            f"単位={unit:<6} "
+            f"単位={unit or '未定義':<6} "
             f"観測時間幅={window_text:<12} "
             f"件数={count}"
         )
@@ -489,9 +482,9 @@ def print_precipitation_definitions(con):
         "ソースごとに降水の観測時間幅が異なるため、降水ランキングは表示しません。"
     )
 
-def print_overall_summary(rows):
+def print_overall_summary(rows, title="総合サマリー (APIごとの利用可能標本)"):
     print()
-    print("=== 総合サマリー ===")
+    print(f"=== {title} ===")
 
     grouped = defaultdict(list)
 
@@ -584,8 +577,9 @@ def print_overall_summary(rows):
     )
 
 def main():
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
+    con = open_database()
+    # 複数集計の途中で収集処理が追記しても、同じスナップショットを参照する。
+    con.execute("BEGIN")
 
     rows = load_comparisons(con)
 
@@ -596,6 +590,10 @@ def main():
 
     print("=== API と AMeDAS の全体比較 ===")
     print(f"データベース: {DB_PATH}")
+    start, end, count = con.execute(
+        "SELECT MIN(target_time), MAX(target_time), COUNT(*) FROM observations"
+    ).fetchone()
+    print(f"DB対象期間: {start} ～ {end} / 全記録: {count}")
     print(f"比較対象行数: {len(rows)}")
 
     for source in API_SOURCES:
@@ -678,9 +676,27 @@ def main():
 
     print_city_comparison(rows)
     print_availability(con)
+    print_freshness(con)
     print_precipitation_definitions(con)
     print_rain_confusion_analysis(rows)
     print_overall_summary(rows)
+
+    common_rows = common_comparisons(rows)
+    core_rows = common_comparisons(rows, (
+        "api_temp", "amedas_temp", "api_humidity", "amedas_humidity",
+        "api_wind", "amedas_wind",
+    ))
+    rain_rows = common_comparisons(rows, ("api_rain", "amedas_rain"))
+    print()
+    print("=== 全4API・AMeDAS共通標本 ===")
+    print(f"取得成功共通地点時刻: {len(common_rows) // len(API_SOURCES)}")
+    print(f"気温・湿度・風速すべて有効な共通地点時刻: {len(core_rows) // len(API_SOURCES)}")
+    print(f"雨判定すべて有効な共通地点時刻: {len(rain_rows) // len(API_SOURCES)}")
+    if common_rows:
+        print(f"共通標本期間: {min(row['target_time'] for row in common_rows)}"
+              f" ～ {max(row['target_time'] for row in common_rows)}")
+    print_overall_summary(core_rows, "共通標本の気温・湿度・風速比較")
+    print_rain_confusion_analysis(rain_rows)
 
     con.close()
 

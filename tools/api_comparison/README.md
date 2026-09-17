@@ -2,11 +2,11 @@
 
 DryNowで使用する天気APIを選定するための比較ツールです。
 
-複数の天気APIから同じ地点・同じ時刻の気象データを取得し、
+複数の天気APIから同じ地点・共通の対象時刻枠の気象データを取得し、
 気象庁のAMeDAS観測値と比較することで、
 DryNowに適したAPIを検証することを目的としています。
 
-## 比較予定のAPI
+## 比較対象のAPI
 
 - OpenWeather
 - Open-Meteo
@@ -15,7 +15,7 @@ DryNowに適したAPIを検証することを目的としています。
 
 比較地点は、熊谷・東京・静岡・大阪・松山の5地点です。
 
-主に以下の項目を比較する予定です。
+主に以下の項目を比較します。各APIのデータ時刻や降水の時間窓は一致しないため、別途確認します。
 
 - 気温
 - 湿度
@@ -24,7 +24,7 @@ DryNowに適したAPIを検証することを目的としています。
 - データの取得成功率
 - データの鮮度
 
-## 現在の実装・運用状況
+## 現在の実装・運用状況（2026-09-17）
 
 Phase 1-Bとして、以下の収集基盤を実装・運用しています。
 
@@ -33,16 +33,20 @@ Phase 1-Bとして、以下の収集基盤を実装・運用しています。
 - `.env` からのAPIキー読み込み
 - APIごとの収集処理を分離するための構成
 - 取得データ・ログをGit管理から除外する設定
-- OpenWeatherとOpen-Meteoの現在値取得
+- OpenWeather、Open-Meteo、Visual Crossing、Tomorrow.ioの現在値とAMeDASの取得
 - 5都市のprimary地点を対象にしたSQLite保存
-- 1回につき5都市 × 5ソース = 25レコードの保存
+- 通常1回につき5都市 × 5ソース = 25レコードの保存
 - Windows Task Schedulerによる毎時05分・35分の自動実行
-- API collector、AMeDAS、`target_time`丸めの単体テスト（49 tests / OK）
+- `compare.py`によるAMeDASとの比較、4API共通標本での比較、鮮度・可用性・欠損率の集計
+- API collector、AMeDAS、`target_time`丸め、比較処理の単体テスト（57 tests / OK）
 
 実API取得とSQLite保存を確認済みです。また、16:35のTask Scheduler自動実行で、
 全レコードが`target_time=16:30`となる25レコードの保存を確認しています。
 
-AMeDAS収集は実装済みです。Visual CrossingとTomorrow.ioは未実装です。
+4APIとAMeDASのcollector・比較処理は実装済みです。採用APIは**Open-Meteo**に決定しました。
+最新DBによる比較結果と選定理由は[API比較結果](../../docs/API_COMPARISON_RESULT.md)を参照してください。
+FlutterはOpen-Meteoの現在値取得、[外干し判定v1](../../docs/DRYING_RULES_V1.md)、
+[時間別予報を使うv8 UI](../../docs/FORECAST_IMPLEMENTATION_V8.md)を実装しています。乾燥時間推定は未実装です。
 
 APIから取得したデータは、比較用に整形した値だけでなく、
 元のレスポンスも保存できる構成にしています。
@@ -53,10 +57,22 @@ APIから取得したデータは、比較用に整形した値だけでなく�
 ## 現在値の手動収集
 
 プロジェクトルートまたは`tools/api_comparison`の`.env`へ
-`OPENWEATHER_API_KEY`を設定し、次のコマンドを実行します。
+`OPENWEATHER_API_KEY`、`VISUAL_CROSSING_API_KEY`、`TOMORROW_API_KEY`を設定し、次のコマンドを実行します。
+Open-MeteoとAMeDASはキー不要です。キー未設定のAPIは収集を試みず、DBに行を保存しません。
 
 ```powershell
 python tools/api_comparison/collect_current.py
+```
+
+## 保存済みデータの比較とテスト
+
+次の比較は`data/weather_validation.db`を読み取り専用で開き、API通信やDB更新を行いません。
+取得成功率は各APIの記録行を分母にし、未記録と取得成功行内の項目欠損を区別します。
+鮮度は`fetched_at - source_time`、AMeDASとの時刻差は別指標として表示します。
+
+```powershell
+python tools/api_comparison/compare.py
+python -m unittest discover -s tools/api_comparison/tests -v
 ```
 
 ## Windows Task Schedulerによる自動収集
@@ -138,5 +154,5 @@ WakeToRunを有効にしても、PCの電源が完全に切れている場合は
 
 ## 今後
 
-現在の自動収集を継続しながら、Visual CrossingとTomorrow.ioの現在値取得、
-同時刻データの比較処理を順番に実装します。
+季節・降雨条件を増やした検証、干している期間全体の予報評価、データ時刻差や収集失敗の分析を進めます。
+外部APIの継続収集・保存は各サービスの利用条件に従って運用します。

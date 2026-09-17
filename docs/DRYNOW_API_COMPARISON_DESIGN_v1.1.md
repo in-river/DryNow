@@ -4,7 +4,21 @@
 - **作成日:** 2026-09-04
 - **ベース:** `DRYNOW_API_COMPARISON_DESIGN_v1.0.md`
 - **対象:** DryNow Phase 1-B
-- **状態:** 現行実装・運用仕様
+- **状態:** 2026-09-04時点の設計記録（現行との差分は以下を参照）
+
+## 2026-09-17 更新：現行実装との差分
+
+以下の第1～13節はv1.1作成時点の仕様・実装状況を保存したものです。
+本文の「現在」「未実装」は当時の記載であり、現在の状態は次のとおりです。
+
+- OpenWeather、Open-Meteo、Visual Crossing、Tomorrow.io、AMeDASのcollectorを実装済み。
+- `compare.py`による気温・湿度・風速、鮮度、可用性・欠損率、雨判定の参考評価と共通標本比較を実装済み。
+- 比較はDBを読み取り専用で開く。Pythonの関連テストは57件成功。
+- 採用APIは**Open-Meteo**。Flutterの現在値と時間別予報の取得、純粋Dartの外干し判定v1、予報ベースのv8 UIを実装。
+- 乾燥時間推定、干している期間全体の評価、`wind`地点を含む収集は未実装。
+
+最新の比較結果と選定理由は[API比較結果](API_COMPARISON_RESULT.md)、
+判定仕様は[外干し判定v1](DRYING_RULES_V1.md)、予報接続は[予報ベースの実用化](FORECAST_IMPLEMENTATION_V8.md)を正本として参照してください。
 
 ## 1. この文書の位置付け
 
