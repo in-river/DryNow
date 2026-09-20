@@ -377,13 +377,74 @@ void main() {
   });
 
   group('時間別予報', () {
+    test('日射と地点の時差を取り込み、epochはUTCのまま保持する', () {
+      final data = forecastPayload(
+        hourly: {
+          'shortwave_radiation': [0, 500],
+        },
+        units: {'shortwave_radiation': 'W/m²'},
+      )..addAll({'utc_offset_seconds': 32400, 'timezone': 'Asia/Tokyo'});
+      final series = ForecastSeries.fromOpenMeteoJson(data, cityName: '東京');
+      expect(series.locationUtcOffset, const Duration(hours: 9));
+      expect(series.timezone, 'Asia/Tokyo');
+      expect(series.forecasts.first.solarRadiation, 0);
+      expect(series.forecasts.last.solarRadiation, 500);
+      expect(
+        series.forecasts.first.forecastTimeUtc,
+        sourceTime.add(const Duration(hours: 1)),
+      );
+    });
+
+    for (final values in <List<dynamic>>[
+      [],
+      [null],
+      ['500'],
+      [double.nan],
+      [double.infinity],
+    ]) {
+      test('日射の欠損・不正値$valuesをゼロにしない', () {
+        final series = ForecastSeries.fromOpenMeteoJson(
+          forecastPayload(
+            hourly: {'shortwave_radiation': values},
+            units: {'shortwave_radiation': 'W/m²'},
+          ),
+          cityName: '東京',
+        );
+        expect(series.forecasts.first.solarRadiation, isNull);
+      });
+    }
+    test('日射の単位不一致は欠損', () {
+      final series = ForecastSeries.fromOpenMeteoJson(
+        forecastPayload(
+          hourly: {
+            'shortwave_radiation': [500],
+          },
+          units: {'shortwave_radiation': 'kW/m²'},
+        ),
+        cityName: '東京',
+      );
+      expect(series.forecasts.first.solarRadiation, isNull);
+    });
+    for (final offset in [null, 999999, 0.5, '32400']) {
+      test('時差$offsetを推測しない', () {
+        final data = forecastPayload()..['utc_offset_seconds'] = offset;
+        expect(
+          ForecastSeries.fromOpenMeteoJson(
+            data,
+            cityName: '東京',
+          ).locationUtcOffset,
+          isNull,
+        );
+      });
+    }
     test('必要な時間別項目とUTC時刻を要求し、降水確率を取り込む', () async {
       final api = WeatherApi(
         client: MockClient((request) async {
           final query = request.url.queryParameters;
           expect(query['timeformat'], 'unixtime');
-          expect(query['timezone'], 'GMT');
+          expect(query['timezone'], 'auto');
           expect(query['forecast_days'], '3');
+          expect(query['hourly']!.split(','), contains('shortwave_radiation'));
           expect(
             query['hourly']!.split(','),
             containsAll([

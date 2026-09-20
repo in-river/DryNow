@@ -159,6 +159,8 @@ class HourlyForecast {
   final double? temperature;
   final double? humidity;
   final double? windSpeed;
+  // Open-Meteoの直前1時間平均（W/m²）。瞬間値と区別して保持する。
+  final double? solarRadiation;
   final double? precipitationMm;
   final double? precipitationProbability;
   final int? weatherCode;
@@ -168,6 +170,7 @@ class HourlyForecast {
     this.temperature,
     this.humidity,
     this.windSpeed,
+    this.solarRadiation,
     this.precipitationMm,
     this.precipitationProbability,
     this.weatherCode,
@@ -201,12 +204,16 @@ class ForecastSeries {
   final double? latitude;
   final double? longitude;
   final List<HourlyForecast> forecasts;
+  final Duration? locationUtcOffset;
+  final String? timezone;
 
   ForecastSeries({
     required this.cityName,
     this.latitude,
     this.longitude,
     required List<HourlyForecast> forecasts,
+    this.locationUtcOffset,
+    this.timezone,
   }) : forecasts = List.unmodifiable(forecasts);
 
   factory ForecastSeries.fromOpenMeteoJson(
@@ -220,6 +227,10 @@ class ForecastSeries {
     }
 
     final times = hourly['time'];
+    final offsetSeconds = _integer(json['utc_offset_seconds']);
+    final offset = offsetSeconds != null && offsetSeconds.abs() <= 14 * 3600
+        ? Duration(seconds: offsetSeconds)
+        : null;
     if (times is! List) {
       return ForecastSeries(
         cityName: cityName,
@@ -258,6 +269,7 @@ class ForecastSeries {
           temperature: value('temperature_2m', index, '°C'),
           humidity: value('relative_humidity_2m', index, '%'),
           windSpeed: value('wind_speed_10m', index, 'm/s'),
+          solarRadiation: value('shortwave_radiation', index, 'W/m²'),
           precipitationMm: value('precipitation', index, 'mm'),
           precipitationProbability: value(
             'precipitation_probability',
@@ -274,6 +286,8 @@ class ForecastSeries {
       latitude: _number(json['latitude']),
       longitude: _number(json['longitude']),
       forecasts: forecasts,
+      locationUtcOffset: offset,
+      timezone: json['timezone'] is String ? json['timezone'] as String : null,
     );
   }
 

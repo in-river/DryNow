@@ -98,13 +98,13 @@ class WeatherApi {
       'longitude': '$lon',
       'hourly':
           'temperature_2m,relative_humidity_2m,wind_speed_10m,'
-          'precipitation,precipitation_probability,weather_code',
+          'shortwave_radiation,precipitation,precipitation_probability,weather_code',
       'temperature_unit': 'celsius',
       'wind_speed_unit': 'ms',
       'precipitation_unit': 'mm',
       'timeformat': 'unixtime',
-      // UTCの絶対時刻で保持し、画面表示時だけ端末のタイムゾーンへ変換する。
-      'timezone': 'GMT',
+      // epochはUTCのまま。地点の日当たり補正にAPIの現地時差を使う。
+      'timezone': 'auto',
       'forecast_days': '3',
     });
 
