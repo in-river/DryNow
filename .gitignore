@@ -11,6 +11,7 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+/AGENTS.md
 
 # IntelliJ 関連
 *.iml
@@ -35,6 +36,11 @@ migrate_working_dir/
 /tools/api_comparison/logs/*.log
 /build/
 /coverage/
+
+# 開発中の検証データ
+/tools/forecast_snapshots/*.json
+!/tools/forecast_snapshots/kasukabe_open_meteo_20260920_053810Z.json
+/tools/ui_review_screenshots/
 
 # シンボル化関連
 app.*.symbols
