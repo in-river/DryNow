@@ -99,7 +99,7 @@ void main() {
     completer.complete(response());
     await tester.pumpAndSettle();
 
-    expect(find.text('春日部市'), findsOneWidget);
+    expect(find.text('春日部市の予報を使用中'), findsOneWidget);
     expect(find.text('外干しOK'), findsOneWidget);
     expect(find.text('今のところ外干しに適した予報です。'), findsOneWidget);
     expect(find.byKey(const Key('planned-time')), findsOneWidget);
@@ -271,7 +271,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('location-button')),
-        matching: find.text('東京'),
+        matching: find.text('東京の予報を使用中'),
       ),
       findsOneWidget,
     );
@@ -287,6 +287,12 @@ void main() {
   });
 
   testWidgets('地点検索の0件・loading・errorを表示する', (tester) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
     final searchCompleter = Completer<GeocodingResponse>();
     final api = FakeWeatherApi((_, _, _) async => response());
     var mode = 'empty';
@@ -302,6 +308,12 @@ void main() {
 
     await tester.tap(find.byKey(const Key('location-button')));
     await tester.pumpAndSettle();
+    expect(find.text('市区町村名や地域名で検索できます。'), findsOneWidget);
+    expect(find.textContaining('現在地の利用は今後対応予定'), findsNothing);
+    expect(
+      tester.getSize(find.byKey(const Key('location-search-content'))).height,
+      lessThan(160),
+    );
     await tester.enterText(
       find.byKey(const Key('location-search-field')),
       'なし',
@@ -327,6 +339,7 @@ void main() {
     await tester.tap(find.byKey(const Key('location-search-button')));
     await tester.pumpAndSettle();
     expect(find.textContaining('地点検索に失敗しました'), findsOneWidget);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
 

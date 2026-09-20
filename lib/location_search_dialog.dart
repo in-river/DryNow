@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import 'geocoding_api.dart';
@@ -64,13 +62,11 @@ class _LocationSearchDialogState extends State<LocationSearchDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final resultHeight = math.min(
-      MediaQuery.sizeOf(context).height * 0.42,
-      320.0,
-    );
     return AlertDialog(
+      scrollable: true,
       title: const Text('地点を変更'),
       content: SizedBox(
+        key: const Key('location-search-content'),
         width: 520,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -95,12 +91,7 @@ class _LocationSearchDialogState extends State<LocationSearchDialog> {
               ),
             ),
             const SizedBox(height: 12),
-            SizedBox(height: resultHeight, child: _buildSearchResult()),
-            const SizedBox(height: 8),
-            Text(
-              '現在地の利用は今後対応予定です。',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            _buildSearchResult(),
           ],
         ),
       ),
@@ -115,53 +106,65 @@ class _LocationSearchDialogState extends State<LocationSearchDialog> {
 
   Widget _buildSearchResult() {
     if (_isSearching) {
-      return const Center(
+      return const Padding(
         key: Key('location-search-loading'),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Row(
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 12),
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            SizedBox(width: 12),
             Text('地点を検索しています…'),
           ],
         ),
       );
     }
     if (_errorMessage != null) {
-      return Center(
+      return Padding(
         key: const Key('location-search-error'),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
           _errorMessage!,
-          textAlign: TextAlign.center,
           style: TextStyle(color: Theme.of(context).colorScheme.error),
         ),
       );
     }
     if (_hasSearched && _locations.isEmpty) {
-      return const Center(
+      return const Padding(
         key: Key('location-search-empty'),
-        child: Text(
-          '該当する地点が見つかりませんでした。\n表記を変えて検索してください。',
-          textAlign: TextAlign.center,
-        ),
+        padding: EdgeInsets.symmetric(vertical: 4),
+        child: Text('該当する地点が見つかりませんでした。\n表記を変えて検索してください。'),
       );
     }
     if (!_hasSearched) {
-      return const Center(child: Text('地名を入力して検索してください。'));
+      return Text(
+        '市区町村名や地域名で検索できます。',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
     }
-    return ListView.separated(
-      key: const Key('location-search-results'),
-      itemCount: _locations.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final location = _locations[index];
-        return ListTile(
-          leading: const Icon(Icons.location_on_outlined),
-          title: Text(location.name),
-          subtitle: location.details.isEmpty ? null : Text(location.details),
-          onTap: () => Navigator.of(context).pop(location),
-        );
-      },
+    final resultHeight = (_locations.length * 64.0).clamp(64.0, 280.0);
+    return SizedBox(
+      height: resultHeight,
+      child: ListView.separated(
+        key: const Key('location-search-results'),
+        itemCount: _locations.length,
+        separatorBuilder: (_, _) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final location = _locations[index];
+          return ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.location_on_outlined),
+            title: Text(location.name),
+            subtitle: location.details.isEmpty ? null : Text(location.details),
+            onTap: () => Navigator.of(context).pop(location),
+          );
+        },
+      ),
     );
   }
 
