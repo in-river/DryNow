@@ -1,12 +1,35 @@
 # DryNow
 
-気象予報と物干し環境から、  
-**「今から外に干して大丈夫か」**と**「何時ごろ乾くか」**を予測するFlutterアプリです。
-
+**気象予報と物干し環境から、「今から外に干して大丈夫か」と「何時ごろ乾くか」を予測するFlutterアプリです。**
 天気を表示するだけではなく、洗濯物を外に干すかどうかという具体的な判断につなげることを目指して開発しています。
 
 > 現在開発中です。  
 > 乾燥時間予測には暫定的な係数を含んでおり、十分な実測による精度検証は今後行います。
+
+## 画面
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/images/drynow-outdoor-ok.png" alt="外干しできますと判定された画面" width="320"><br>
+      外干し判定・乾燥完了時刻
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/images/drynow-indoor.png" alt="室内干しがおすすめと判定された画面" width="320"><br>
+      雨予報時の室内干し判定
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/images/drynow-reason.png" alt="予測に使用したデータを示す画面" width="320"><br>
+      予測に使用した気象データと物干し環境
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/images/drynow-settings.png" alt="設定画面" width="320"><br>
+      物干し環境・予測地点の設定
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -101,9 +124,7 @@ DryNowでは、外干し判定や乾燥時間予測の入力となる気象デ�
 
 熊谷・東京・静岡・大阪・松山の5都市でデータを継続的に保存し、気温・湿度・風速・降水などを比較しました。
 
-比較ではTomorrow.ioが数値上もっとも良い項目もありました。
-
-一方でDryNowでは、数値上の誤差だけでなく、
+比較にあたっては、気象データの精度だけでなく、
 
 - 時間別予報
 - 日射量
@@ -186,6 +207,34 @@ v2では、
 - HTTP / JSON
 - Windows Task Scheduler
 - Git / GitHub
+
+---
+
+## 実行方法
+
+### 必要環境
+
+- Flutter SDK
+- Dart
+- Windows 11で動作確認済み
+
+### 起動
+
+```bash
+flutter pub get
+flutter run -d windows
+```
+
+Open-Meteoを利用しているため、アプリ本体の実行にAPIキーは不要です。
+
+### テスト
+
+```bash
+flutter analyze
+flutter test
+```
+
+2026-09-20時点で、`flutter analyze` は問題なし、`flutter test` は467件すべて成功しています。
 
 ---
 
