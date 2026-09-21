@@ -1,14 +1,19 @@
 # Phase 1 気象データの信頼性検証
 
-## 2026-09-17 更新：API選定と外干し判定v1
+> [!NOTE]
+> この文書は気象データ検証を進めていた過程の記録です。
+> 現在のAPI選定結果は [API_COMPARISON_RESULT.md](API_COMPARISON_RESULT.md)、現在のDryNow全体の実装状況は [README.md](../README.md) と [V9_VALIDATION.md](V9_VALIDATION.md) を参照してください。
 
 以下の第1～11節は2026-08-21～09-04の検証経緯を残した記録です。
 本文の「未実装」「現在」はその当時の状態を指します。
 
-現行コードでは4API（OpenWeather、Open-Meteo、Visual Crossing、Tomorrow.io）とAMeDASの
-収集・比較を実装済みで、最新DBの比較を踏まえて**Open-Meteoを採用**しました。
-Flutterの現在値取得を切り替え、純粋Dartの外干し判定v1を実装しています。v8では指定した開始時刻の時間別予報と降水確率を判定・UIへ接続しました。
-乾燥時間推定と干している期間全体の評価は未実装です。
+この文書に記録した2026-09-04時点では、OpenWeatherとOpen-Meteoを中心とした収集基盤を実装し、Visual Crossing、Tomorrow.io、AMeDASを含む比較へ進んでいる段階でした。
+
+その後、4API（OpenWeather、Open-Meteo、Visual Crossing、Tomorrow.io）とAMeDASのデータを収集・比較し、比較結果や必要な気象項目、利用条件などを踏まえてOpen-Meteoを採用しました。
+
+さらに、Flutter本体をOpen-Meteoへ接続し、外干し判定、時間別予報を用いた判定、乾燥時間予測v1まで実装しています。
+
+現在の実装状況は [README.md](../README.md) と [V9_VALIDATION.md](V9_VALIDATION.md) を参照してください。
 
 最新の比較結果・選定理由は[API比較結果](API_COMPARISON_RESULT.md)、
 判定仕様は[外干し判定v1](DRYING_RULES_V1.md)、予報接続は[予報ベースの実用化](FORECAST_IMPLEMENTATION_V8.md)を正本として参照してください。
@@ -195,9 +200,9 @@ WeatherNewsの過去24時間データでは、降雨に伴って気温が低下�
 
 ### Phase 1-B：複数APIのリアルタイム値収集・比較
 
-現在の方針は、OpenWeather単体を検証するのではなく、DryNowに最適な気象データソースを選定することを目標とする。
+当時の方針は、OpenWeather単体を検証するのではなく、DryNowに最適な気象データソースを選定することを目標とする。
 
-当初は過去データを選び、気象庁アメダスの実観測値を基準として各候補APIを比較する方針だった。しかし、Historicalデータが実際のリアルタイム応答と一致するとは限らないため、現在は**Current APIがその時点で返した値を自前保存し、後から同時刻のAMeDAS値と比較する方針**へ変更した。
+当初は過去データを選び、気象庁アメダスの実観測値を基準として各候補APIを比較する方針だった。しかし、Historicalデータが実際のリアルタイム応答と一致するとは限らないため、その時点では**Current APIがその時点で返した値を自前保存し、後から同時刻のAMeDAS値と比較する方針**へ変更した。
 
 2026/09/04時点では、次の収集基盤まで実装・確認済みである。
 
@@ -211,7 +216,7 @@ WeatherNewsの過去24時間データでは、降雨に伴って気温が低下�
 
 Visual Crossing、Tomorrow.io、AMeDAS収集は未実装であり、比較評価はまだ完了していない。
 
-現在の収集対象は以下の5地点である。
+当時の収集対象は以下の5地点である。
 
 - 埼玉：熊谷
 - 東京：東京
@@ -253,4 +258,4 @@ Visual Crossing、Tomorrow.io、AMeDAS収集は未実装であり、比較評価
 
 ただし、サンプルが少ないため、まだ最終結論には至っていない。
 
-現在は、複数APIのCurrent値を30分ごとに蓄積するPhase 1-Bを進めている。今後AMeDAS収集と比較処理を実装し、DryNowにとって最適なデータソースを選定する。
+2026-09-04時点では、複数APIのCurrent値を30分ごとに蓄積するPhase 1-Bを進めている。今後AMeDAS収集と比較処理を実装し、DryNowにとって最適なデータソースを選定する。

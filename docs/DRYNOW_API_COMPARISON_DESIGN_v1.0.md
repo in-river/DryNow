@@ -1,5 +1,10 @@
 # DryNow API比較・リアルタイム検証ツール 設計書
 
+> [!NOTE]
+> この文書は2026-09-01時点の気象API比較ツールの初期設計を記録した資料です。
+> 後続の設計記録は [DRYNOW_API_COMPARISON_DESIGN_v1.1.md](DRYNOW_API_COMPARISON_DESIGN_v1.1.md)、現在のAPI選定結果は [API_COMPARISON_RESULT.md](API_COMPARISON_RESULT.md) を参照してください。
+> 現在のDryNow全体の実装状況は [README.md](../README.md) と [V9_VALIDATION.md](V9_VALIDATION.md) を参照してください。
+
 - **Version:** v1.0
 - **作成日:** 2026-09-01
 - **対象:** DryNow Phase 1-B
@@ -40,13 +45,13 @@ Phase 1-Bでは、**各社のリアルタイムレスポンスを自前で保存
 
 | Source | 使用用途 | 主な特徴 | Phase 1-B |
 |---|---|---|---|
-| OpenWeather | Current Weather Data | 現在のDryNow基準。複数の観測・モデル等を処理したCurrent値 | 採用 |
+| OpenWeather | Current Weather Data | 当時のDryNow基準。複数の観測・モデル等を処理したCurrent値 | 採用 |
 | Open-Meteo | Forecast API `current` | 気象モデルベース。Currentは15分モデルデータを基礎とする | 採用 |
 | Visual Crossing | Timeline API `currentConditions` | Current Conditions。観測の新しさと距離を考慮したデータ源選択 | 採用 |
 | Tomorrow.io | Realtime Weather API | Realtime endpoint。Freeでcore weather parameters利用可 | 採用 |
 | 気象庁 AMeDAS | 評価基準 | 現地観測の公式値 | 基準 |
 
-## 5. API呼び出し量の見積り
+## 5. 当時のAPI呼び出し量の見積り
 
 1時間あたり、1社につき8座標を取得する。
 
